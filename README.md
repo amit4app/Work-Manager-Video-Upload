@@ -55,7 +55,16 @@ In the next iteration, we plan to:
 
 ## Demo
 
-For now, the app works locally and simulates the upload progress. The actual video upload feature to a server is planned for future updates.
+Here is a demo of the simulated video upload progress:
+
+![Demo GIF](images/work_manager.gif)
+
+This GIF demonstrates how the video upload simulation works. It shows the progress bar updating as the simulated upload progresses. WorkManager ensures that the upload continues even if the app is killed or the device is restarted.
+
+### How It Works:
+- **WorkManager** is used to schedule the upload task.
+- The upload progress is updated in the UI.
+- If the app is closed or the device is restarted, the upload automatically resumes.
 
 ## Technologies Used
 
