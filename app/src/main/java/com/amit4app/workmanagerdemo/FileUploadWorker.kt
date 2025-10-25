@@ -7,7 +7,9 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 import kotlin.math.min
@@ -20,46 +22,48 @@ class FileUploadWorker(
     private val repo = UploadRepo(appContext)
 
     override suspend fun doWork(): Result {
-        return try {
-            val uriStr = inputData.getString(KEY_FILE_URI) ?: return fail("No URI")
-            val uploadId = inputData.getString(KEY_UPLOAD_ID) ?: return fail("No uploadId")
-            val uri = Uri.parse(uriStr)
+        return withContext(Dispatchers.IO) {
+            return@withContext try {
+                val uriStr = inputData.getString(KEY_FILE_URI) ?: return@withContext fail("No URI")
+                val uploadId = inputData.getString(KEY_UPLOAD_ID) ?: return@withContext fail("No uploadId")
+                val uri = Uri.parse(uriStr)
 
-            val name = queryDisplayName(applicationContext, uri) ?: "File"
-            val total = queryFileSizeSafe(applicationContext, uri)
-                ?: return fail("Could not determine file size")
+                val name = queryDisplayName(applicationContext, uri) ?: "File"
+                val total = queryFileSizeSafe(applicationContext, uri)
+                    ?: return@withContext fail("Could not determine file size")
 
-            setForeground(createForegroundInfo(0, name))
+                setForeground(createForegroundInfo(0, name))
 
-            var offset = repo.getUploadedBytes(uploadId).coerceAtMost(total)
-            applicationContext.contentResolver.openInputStream(uri)?.use { input ->
-                skipFully(input, offset)
+                var offset = repo.getUploadedBytes(uploadId).coerceAtMost(total)
+                applicationContext.contentResolver.openInputStream(uri)?.use { input ->
+                    skipFully(input, offset)
 
-                val buf = ByteArray(64 * 1024)
-                while (offset < total) {
-                    val toRead = min(buf.size.toLong(), (total - offset)).toInt()
-                    val read = input.read(buf, 0, toRead)
-                    if (read == -1) break
+                    val buf = ByteArray(64 * 1024)
+                    while (offset < total) {
+                        val toRead = min(buf.size.toLong(), (total - offset)).toInt()
+                        val read = input.read(buf, 0, toRead)
+                        if (read == -1) break
 
-                    // Simulate network
-                    delay(25)
+                        // Simulate network
+                        delay(25)
 
-                    offset += read
-                    repo.saveUploadedBytes(uploadId, offset)
+                        offset += read
+                        repo.saveUploadedBytes(uploadId, offset)
 
-                    val progress = ((offset * 100) / total).toInt()
-                    setProgress(workDataOf(PROGRESS to progress))
-                    setForeground(createForegroundInfo(progress, name))
+                        val progress = ((offset * 100) / total).toInt()
+                        setProgress(workDataOf(PROGRESS to progress))
+                        setForeground(createForegroundInfo(progress, name))
 
-                    if (isStopped) return Result.retry()
-                }
-            } ?: return fail("Cannot open input stream")
+                        if (isStopped) return@withContext Result.retry()
+                    }
+                } ?: return@withContext fail("Cannot open input stream")
 
-            repo.clear(uploadId)
-            Result.success()
-        } catch (t: Throwable) {
-            Log.e("FileUploadWorker", "doWork failed", t)
-            Result.retry() // or Result.failure()
+                repo.clear(uploadId)
+                Result.success()
+            } catch (t: Throwable) {
+                Log.e("FileUploadWorker", "doWork failed", t)
+                Result.retry() // or Result.failure()
+            }
         }
     }
 
